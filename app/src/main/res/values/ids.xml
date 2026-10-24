@@ -1,0 +1,5 @@
+<resources>
+    <item name="settings_scroll" type="id" />
+    <item name="app_search" type="id" />
+    <item name="app_list" type="id" />
+</resources>

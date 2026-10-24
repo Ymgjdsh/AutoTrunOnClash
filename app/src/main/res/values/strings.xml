@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Clash 自动代理</string>
+    <string name="app_load_error">请返回后重试。%1$s</string>
+    <string name="vpn_mode">VPN 模式（推荐，需已授权）</string>
+    <string name="core_mode">仅 Clash 核心（需自行配置流量接管）</string>
+    <string name="selected_count">选择触发应用  ·  已选 %1$d 个</string>
+    <string name="save_count">保存（%1$d）</string>
+</resources>

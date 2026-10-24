@@ -1,0 +1,10 @@
+<resources>
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowLightStatusBar">@bool/light_system_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/light_system_bars</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+    <bool name="light_system_bars">true</bool>
+    <string-array name="xposed_scope"><item>android</item></string-array>
+</resources>

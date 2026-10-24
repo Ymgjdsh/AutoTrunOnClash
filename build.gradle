@@ -1,0 +1,11 @@
+plugins {
+    id 'com.android.application' version '8.7.3' apply false
+}
+
+// Optional ASCII output root for Android/Gradle tools on Windows non-ASCII workspaces.
+if (providers.gradleProperty('externalBuildDir').isPresent()) {
+    def outputRoot = file(providers.gradleProperty('externalBuildDir').get())
+    allprojects {
+        layout.buildDirectory.set(new File(outputRoot, project == rootProject ? 'root' : project.name))
+    }
+}
