@@ -69,8 +69,8 @@ public final class SettingsActivity extends AppCompatActivity {
         packageLabel = Ui.body(this, proxyPackage()); packageLabel.setTextIsSelectable(true); proxy.addView(packageLabel); Ui.button(this, proxy, "修改代理包名", this::editPackage);
         RadioGroup modes = new RadioGroup(this); mode(modes, getString(R.string.vpn_mode), 1); mode(modes, getString(R.string.core_mode), 2);
         modes.check(prefs.getBoolean("vpn", true) ? 1 : 2); modes.setOnCheckedChangeListener((g, id) -> save(prefs.edit().putBoolean("vpn", id == 1))); proxy.addView(modes);
-        toggle(proxy, "使用 Clash 官方开启入口", "VPN 模式推荐开启：调用 Clash 自带的开启功能，可能短暂显示 Clash 提示。请在 Clash 中也开启 VPN 模式。关闭此项或选择仅核心时，使用系统直接启动。", "officialStart", true);
-        proxy.addView(Ui.body(this, "只适配 CMFA 的 TunService / ClashService。修改包名不能让其他代理应用自动兼容。系统“始终开启 VPN”需先关闭。")); Ui.button(this, proxy, "打开 Clash Meta", this::openProxy);
+        toggle(proxy, "使用 Clash 官方开启入口", "VPN 模式优先使用：调用客户端自带的开启功能，可能短暂显示提示；没有匹配入口时自动回退系统服务启动。请在客户端中也开启 VPN 模式。关闭此项或选择仅核心时，直接启动服务。", "officialStart", true);
+        proxy.addView(Ui.body(this, "要求客户端提供兼容的 TunService / ClashService。VPN 模式下缺少官方 START_CLASH 入口时自动回退系统服务启动；服务结构不同的客户端不支持。系统“始终开启 VPN”需先关闭。")); Ui.button(this, proxy, "打开 Clash Meta", this::openProxy);
         LinearLayout appearance = Ui.card(this, page, "外观"); SharedPreferences visual = getSharedPreferences("appearance", MODE_PRIVATE);
         Ui.button(this, appearance, "主题 · " + themeName(visual.getInt("mode", -1)), this::chooseTheme);
         Ui.toggle(appearance, "使用壁纸动态配色", "遵循 Material 3 系统配色，并自动适应深浅色。", visual.getBoolean("dynamic", true)).setOnCheckedChangeListener((b, value) -> { visual.edit().putBoolean("dynamic", value).apply(); recreate(); });
@@ -80,7 +80,7 @@ public final class SettingsActivity extends AppCompatActivity {
         Ui.button(this, tests, "重试当前自动控制", () -> command("retry")); Ui.button(this, tests, "检查 VPN 授权与环境", () -> command("check")); Ui.button(this, tests, "查看诊断信息", this::diagnostics);
         LinearLayout help = Ui.card(this, page, "安装与使用");
         help.addView(Ui.body(this, "1. 在 LSPosed 启用模块，作用域仅选「系统框架 / android」，重启手机。\n\n2. 手动打开 Clash Meta，选好配置、授予 VPN 权限，成功连接后关闭。\n\n3. 选择触发应用，再启用自动控制。返回桌面保留代理；所有所选应用结束运行后，延迟释放模块开启的代理。\n\n当前只支持主用户 user 0。应用分身、工作资料及多用户尚不支持。缓存进程不等于正在使用的后台应用，详见后台保留说明。"));
-        MaterialTextView foot = Ui.body(this, BuildConfig.VERSION_NAME + " · Android 15 起\n事件驱动，不轮询前台、不持有唤醒锁。尚未进行真机功耗测量。代理启动存在时间窗口，不保证应用首次请求已走代理。\n\n框架与 CMFA 联动仍需在你的一加手机上验证。"); Ui.pad(foot, 4, 4, 4, 8); page.addView(foot); Ui.install(this, root);
+        MaterialTextView foot = Ui.body(this, BuildConfig.VERSION_NAME + " · Android 15 起\n事件驱动，不轮询前台、不持有唤醒锁。尚未进行真机功耗测量。代理启动存在时间窗口，不保证应用首次请求已走代理。\n\nVPN 模式优先使用客户端官方入口；未提供时使用受权限与 VPN 状态检查保护的系统服务启动路径。客户端服务结构仍需设备验证。"); Ui.pad(foot, 4, 4, 4, 8); page.addView(foot); Ui.install(this, root);
     }
     private void mode(RadioGroup p, String label, int id) { MaterialRadioButton r = new MaterialRadioButton(this); r.setId(id); r.setText(label); r.setMinHeight(Ui.dp(this, 48)); p.addView(r); }
     private void toggle(LinearLayout p, String title, String detail, String key, boolean def) { Ui.toggle(p, title, detail, prefs.getBoolean(key, def)).setOnCheckedChangeListener((b, v) -> save(prefs.edit().putBoolean(key, v))); }

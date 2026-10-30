@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.Arrays;
 import io.github.clashautoproxy.core.AppPresencePolicy;
+import io.github.clashautoproxy.core.ClashStartRoute;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import io.github.clashautoproxy.Contract;
@@ -332,7 +333,12 @@ final class SystemController {
         readHealth("proxyVersion", () -> context.getPackageManager().getPackageInfo(proxyPackage, 0).versionName);
         readHealth("vpnApproved", () -> vpnApproved(proxyPackage));
         readHealth("alwaysOn", this::alwaysOnPackage);
-        readHealth("officialEntry", () -> OfficialClashStarter.resolve(context, proxyPackage).flattenToShortString());
+        readHealth("officialEntry", () -> {
+            try { return OfficialClashStarter.resolve(context, proxyPackage).flattenToShortString(); }
+            catch (OfficialClashStarter.EntryUnavailable missing) {
+                return "未声明（优先官方入口时自动回退系统直接启动）";
+            }
+        });
         readHealth("vpnState", () -> {
             VpnStateReader.State vpn = vpnState();
             health.putString("vpnOwnerPackage", vpn.ownerPackage());
@@ -393,10 +399,10 @@ final class SystemController {
         @android.annotation.SuppressLint("MissingPermission")
         @Override public void start(ProxyMachine.Target target, boolean protectOtherVpn) throws Exception {
             ComponentName component = new ComponentName(target.packageName(), target.serviceName());
-            boolean useOfficial = officialStart && Contract.TUN_SERVICE.equals(target.serviceName());
+            boolean vpnMode = Contract.TUN_SERVICE.equals(target.serviceName());
             launch.clear();
             launch.putString("component", component.flattenToShortString());
-            launch.putString("route", useOfficial ? "Clash 官方 START_CLASH 入口" : "应用身份 / ActivityManagerInternal");
+            launch.putString("route", "正在检查客户端启动入口");
             launch.putLong("requestedAt", SystemClock.elapsedRealtime());
             captureEnvironment();
             launch.putBundle("before", new Bundle(health));
@@ -405,6 +411,14 @@ final class SystemController {
             ServiceInfo info = context.getPackageManager().getServiceInfo(component, PackageManager.ComponentInfoFlags.of(0));
             launch.putInt("uid", info.applicationInfo.uid);
             if (!info.enabled || !info.applicationInfo.enabled) throw new IllegalStateException("代理应用或服务已停用");
+            ClashStartRoute.Choice<ComponentName> route = ClashStartRoute.select(vpnMode, officialStart,
+                    () -> OfficialClashStarter.resolve(context, target.packageName()));
+            String fallbackNote = route.fellBack() ? "未找到兼容的官方 START_CLASH 入口，自动使用系统服务启动；" : "";
+            String routeSuffix = route.fellBack() ? "（官方入口缺失，自动回退）" : "";
+            launch.putBoolean("entryFallback", route.fellBack());
+            launch.putString("route", route.useOfficial() ? "Clash 官方 START_CLASH 入口" :
+                    "应用身份 / ActivityManagerInternal" + routeSuffix);
+            if (route.fellBack()) log(fallbackNote + target.packageName());
             if (Contract.TUN_SERVICE.equals(target.serviceName())) {
                 if (!vpnApproved(target.packageName())) throw new IllegalStateException("尚未授权 VPN，请在 Clash Meta 中手动连接一次");
                 if (!alwaysOnPackage().isEmpty()) throw new IllegalStateException("请先关闭系统的始终开启 VPN，再使用按应用启停");
@@ -417,9 +431,9 @@ final class SystemController {
                 if (!(prepared instanceof Boolean) || !((Boolean) prepared)) throw new IllegalStateException("系统未接受已授权 VPN 的准备请求");
             }
             Intent intent = new Intent().setComponent(component);
-            if (useOfficial) {
+            if (route.useOfficial()) {
                 controlOperation = "start"; controlUntil = SystemClock.elapsedRealtime() + 6000;
-                OfficialClashStarter.start(context, target.packageName());
+                OfficialClashStarter.start(context, target.packageName(), route.officialEntry());
                 launch.putString("outcome", "ACTIVITY_REQUESTED");
                 launch.putString("detail", "已请求官方 START_CLASH，由 Clash 在自身进程开启服务；等待实际运行验证。Clash 的 VPN 模式需与模块一致。");
                 log("启动路径：Clash 官方 START_CLASH 入口；等待服务验证");
@@ -428,9 +442,9 @@ final class SystemController {
                         () -> startResult(serviceStarter.start(info.applicationInfo.uid, target.packageName(), intent)),
                         () -> startResult(context.startForegroundService(intent)),
                         message -> {
-                            if (message.startsWith("启动路径：")) launch.putString("route", "应用身份 / ActivityManagerInternal");
-                            else if (message.startsWith("应用身份接口不可用：")) launch.putString("route", "系统 Context（接口不兼容回退）");
-                            launch.putString("detail", message); log(message);
+                            if (message.startsWith("启动路径：")) launch.putString("route", "应用身份 / ActivityManagerInternal" + routeSuffix);
+                            else if (message.startsWith("应用身份接口不可用：")) launch.putString("route", "系统 Context（接口不兼容回退）" + routeSuffix);
+                            launch.putString("detail", fallbackNote + message); log(message);
                         });
                 launch.putString("outcome", outcome.name());
             }
@@ -445,6 +459,11 @@ final class SystemController {
             launch.putString("detail", launch.getString("detail", "") + "；5 秒验证超时，未视为成功");
             // Separate fields preserve the pre-request evidence and show current post-failure state.
             captureEnvironment();
+            if (health.getBoolean("stopped")) {
+                String notice = "客户端当前处于强行停止状态；请手动打开客户端并成功连接后，在客户端内断开，再测试自动启动；不要用系统强行停止代替断开。";
+                launch.putString("detail", launch.getString("detail", "") + "；" + notice);
+                log(notice);
+            }
             ArrayList<String> trace = startupTrace.snapshot();
             log(trace.size() <= 1 ? "未观察到本次代理的系统服务启动调用；查看官方入口和环境诊断"
                     : "已捕获 " + trace.size() + " 条本次系统服务启动路径，详见诊断");
@@ -470,8 +489,14 @@ final class SystemController {
             ProxyMachine.Service current = running(expected.target().packageName());
             if (current == null || !current.target().equals(expected.target()) || expected.instance() == 0
                     || current.instance() != expected.instance()) return;
+            ComponentName stopEntry;
+            try { stopEntry = OfficialClashStarter.resolve(context, expected.target().packageName(), "STOP_CLASH"); }
+            catch (OfficialClashStarter.EntryUnavailable missing) {
+                log("客户端未声明官方 STOP_CLASH 入口；不追加第二种停止请求，继续验证原停止请求");
+                return;
+            }
             controlOperation = "stop"; controlUntil = SystemClock.elapsedRealtime() + 4000;
-            OfficialClashStarter.stop(context, expected.target().packageName());
+            OfficialClashStarter.stop(context, expected.target().packageName(), stopEntry);
             log("原实例仍在运行，追加一次官方 STOP_CLASH 请求；不会反复重试");
         }
     }

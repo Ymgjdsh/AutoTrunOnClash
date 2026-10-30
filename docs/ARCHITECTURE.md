@@ -30,11 +30,11 @@ ProxyMachine 通过 Gateway、Scheduler、Listener 与平台交互，可以用�
 
 ## Clash 控制
 
-VPN 模式默认使用导出的 ExternalControlActivity / START_CLASH，让 Clash 在自身进程开启服务。校验实际安装包的组件、导出状态与 Intent 声明。绝不使用 TOGGLE；官方控制页单独创建临时任务并有限保留原前台规则。
+VPN 模式默认优先使用兼容客户端导出的 ExternalControlActivity / START_CLASH，让 Clash 在自身进程开启服务。校验实际安装包的组件、导出状态与 Intent 声明。绝不使用 TOGGLE；官方控制页单独创建临时任务并有限保留原前台规则。缺少 START_CLASH 时仅入口缺失会触发回退，使用通过 VPN 和系统权限检查的直接服务路径；服务拒绝或其他启动错误不会导致第二次请求。
 
 关闭官方入口选项时使用 ActivityManagerInternal.startServiceInPackage；只有内部接口不可用才回退到系统 Context。仅核心模式使用直接路径。返回 null 或超时不叠加其他启动请求。
 
-关闭使用包限定的 CLASH_REQUEST_STOP 广播，并指定 Clash 的接收权限。原实例未退出时最多补一次官方 STOP_CLASH，不强停整个客户端。服务及 VPN 残留均确认退出后才报告关闭成功。
+关闭使用包限定的 CLASH_REQUEST_STOP 广播，并指定接收权限。CMFA 官方 STOP_CLASH 可用且原实例未退出时最多补发一次，不强停整个客户端。入口缺失时继续验证原关闭请求。服务及 VPN 残留均确认退出后才报告关闭成功。
 
 启动前确认既有 VPN 授权和始终开启配置，不修改 AppOps 或代替用户授权。默认保护其他 VPN；状态未知时保守失败。
 

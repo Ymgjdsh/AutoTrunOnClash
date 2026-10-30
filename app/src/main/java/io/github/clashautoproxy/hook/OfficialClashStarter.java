@@ -8,13 +8,18 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.os.Binder;
 import io.github.clashautoproxy.Contract;
+import io.github.clashautoproxy.core.ClashStartRoute;
 
 /** Uses CMFA's exported START_CLASH action, never TOGGLE or a fabricated component. */
 final class OfficialClashStarter {
+    static final class EntryUnavailable extends ClashStartRoute.EntryUnavailable {
+        EntryUnavailable(String message) { super(message); }
+    }
+
     static ComponentName resolve(Context context, String pkg) throws Exception {
         return resolve(context, pkg, "START_CLASH");
     }
-    private static ComponentName resolve(Context context, String pkg, String action) throws Exception {
+    static ComponentName resolve(Context context, String pkg, String action) throws Exception {
         Intent request = new Intent(pkg + ".action." + action).setPackage(pkg);
         for (ResolveInfo resolved : context.getPackageManager().queryIntentActivities(request,
                 PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY))) {
@@ -24,16 +29,21 @@ final class OfficialClashStarter {
                 return new ComponentName(pkg, info.name);
             }
         }
-        throw new IllegalStateException("当前 Clash 版本未提供可用的官方 " + action + " 入口，请检查 CMFA 版本。");
+        throw new EntryUnavailable("未找到当前客户端的兼容 " + action + " 入口：" + pkg);
     }
     static void start(Context context, String pkg) throws Exception {
-        request(context, pkg, "START_CLASH");
+        request(context, pkg, "START_CLASH", resolve(context, pkg));
+    }
+    static void start(Context context, String pkg, ComponentName activity) throws Exception {
+        request(context, pkg, "START_CLASH", activity);
     }
     static void stop(Context context, String pkg) throws Exception {
-        request(context, pkg, "STOP_CLASH");
+        stop(context, pkg, resolve(context, pkg, "STOP_CLASH"));
     }
-    private static void request(Context context, String pkg, String action) throws Exception {
-        ComponentName activity = resolve(context, pkg, action);
+    static void stop(Context context, String pkg, ComponentName activity) throws Exception {
+        request(context, pkg, "STOP_CLASH", activity);
+    }
+    private static void request(Context context, String pkg, String action, ComponentName activity) throws Exception {
         Intent request = new Intent(pkg + ".action." + action).setComponent(activity)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
                         | Intent.FLAG_ACTIVITY_NO_ANIMATION | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
